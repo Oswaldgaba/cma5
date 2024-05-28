@@ -1,0 +1,161 @@
+---
+title: "cma-week5"
+format: html
+editor: visual
+---
+
+```{r}
+library("readr")
+library("dplyr")
+library("sf")
+library("ggplot2")
+```
+
+```{r}
+testfun <- function(){}
+
+testfun()
+
+class(testfun)
+```
+
+```{r}
+testfun <- function() {
+    print("this function does nothing")
+}
+
+testfun()
+```
+
+```{r}
+testfun <- function(sometext) {
+    print(sometext)
+}
+
+testfun(sometext = "this function does slightly more, but still not much")
+```
+
+```{r}
+my_age <- function(birthday, output_unit) {
+    difftime(Sys.time(), birthday, units = output_unit)
+}
+
+my_age(birthday = "1997-04-23", output_unit = "days")
+
+my_age("1997-03-01", "days")
+```
+
+```{r}
+my_age <- function(birthday, output_unit = "days") {
+    difftime(Sys.time(), birthday, units = output_unit)
+}
+
+# if not stated otherwise, our function uses the unit "days"
+my_age("1997-03-01")
+
+#we can still overwrite the units
+
+my_age("1997-03-01", "weeks")
+```
+
+# Task 1: Create your own functions:
+
+```{r}
+BMI <- function(weight, height) {
+  print(weight/(height)^2)
+}
+
+BMI(85, 1.81)
+```
+
+```{r}
+farenheit <- function(celsius) {
+  print((celsius * 9/5)+32)
+}
+
+farenheit(65)
+```
+
+```{r}
+euc_distance <- function(x1, y1, x2, y2) {
+  distance <- sqrt((x2 - x1)^2 + (y2 - y1)^2)
+  return(distance)
+}
+
+```
+
+# Task 2: Prepare Analysis
+
+```{r}
+Wildschwein <- read.csv("wildschwein_BE_2056.csv", header = TRUE, sep = ",")
+
+# Konvertieren der date-Spalte in das Datum-Format
+Wildschwein <- Wildschwein %>%
+  mutate(date = as.Date(DatetimeUTC, format = "%Y-%m-%d"))
+
+# Filtern und Konvertieren in ein sf-Objekt
+d1 <- Wildschwein %>%
+  filter((TierName %in% c("Rosa", "Sabi")) & 
+         (date >= as.Date("2015-04-01")) & 
+         (date <= as.Date("2015-04-15"))) %>%
+  st_as_sf(coords = c("E", "N"), crs = 2056, remove = FALSE)
+
+```
+
+# Task 3: Join Key
+
+```{r}
+library(lubridate)
+
+d1 <- d1 |> 
+  mutate(DatetimeUTC = ymd_hms(DatetimeUTC))
+
+d1 <- d1 |> 
+  mutate(DatetimeRound = round_date(DatetimeUTC, unit = "15 minutes"))
+
+head(d1)
+```
+
+# Task 4: Measuring distance
+
+```{r}
+data_sabi <- d1 |> 
+  filter(TierName == "Sabi")
+
+data_rosa <- d1 |> 
+  filter(TierName == "Rosa")
+
+# Konvertieren der sf-Objekte in DataFrames
+rosa_df <- st_drop_geometry(data_rosa)
+sabi_df <- st_drop_geometry(data_sabi)
+
+d_joined <- inner_join(sabi_df, rosa_df, by = "DatetimeRound", suffix = c("_Sabi", "_Rosa"))
+
+
+d_joined <- d_joined |> 
+  mutate(distance = euc_distance(E_Sabi, N_Sabi, E_Rosa, N_Rosa))
+
+d_joined <- d_joined |> 
+  mutate(meet = distance <= 100)
+```
+
+# Task 5: Visualize
+
+```{r}
+
+meet <- d_joined |> 
+  filter(meet == TRUE)
+plot_meets <- ggplot() +
+  geom_point(data = data_rosa, aes(x = E, y = N), color = "blue", size = 1, alpha = 0.6) +
+  geom_point(data = data_sabi, aes(x = E, y = N), color = "red", size = 1, alpha = 0.6) +
+  geom_point(data = meet, aes(x = E_Rosa, y = N_Rosa), color = "green", size = 3) +
+  geom_point(data = meet, aes(x = E_Sabi, y = N_Sabi), color = "green", size = 3) +
+  xlim(min(Wildschwein$E), max(Wildschwein$E)) +
+  ylim(min(Wildschwein$N), max(Wildschwein$N)) +
+
+  ggtitle("Bewegungen und Treffen von Rosa und Sabi") +
+  xlab("E") + ylab("N") +
+  theme_minimal()
+plot_meets
+  
+```
